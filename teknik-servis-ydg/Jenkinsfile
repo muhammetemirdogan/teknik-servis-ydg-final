@@ -20,12 +20,12 @@ pipeline {
 
     environment {
         DOCKER_IMAGE      = "teknik-servis-image"
-        DOCKER_CONTAINER  = "teknik-servis-container"
-        DOCKER_NETWORK    = "teknik-servis-net"
-        SELENIUM_CONTAINER= "selenium-chrome"
+        DOCKER_CONTAINER  = "teknik-servis-final-container"
+        DOCKER_NETWORK    = "teknik-servis-final-net"
+        SELENIUM_CONTAINER= "selenium-chrome-final"
         SELENIUM_PORT     = "4444"
-        APP_PORT          = "8081"
-        BASE_URL          = "http://localhost:8081"
+        APP_PORT          = "8082"
+        BASE_URL          = "http://localhost:8082"
         SELENIUM_HEADLESS = "true"
     }
 
