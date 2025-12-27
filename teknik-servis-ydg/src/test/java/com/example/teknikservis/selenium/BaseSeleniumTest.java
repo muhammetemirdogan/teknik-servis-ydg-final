@@ -15,42 +15,45 @@ public abstract class BaseSeleniumTest {
     protected WebDriver driver;
     protected WebDriverWait wait;
 
-    protected String baseUrl() {
-        String s = System.getProperty("baseUrl");
-        if (s != null && !s.isBlank()) return s;
-        String env = System.getenv("APP_BASE_URL");
-        return (env != null && !env.isBlank()) ? env : "http://localhost:8082";
-    }
+    // 🔥 Senaryoların kullandığı field (compile hatasını çözen şey bu)
+    protected String baseUrl;
 
-    protected String seleniumUrl() {
-        String s = System.getProperty("seleniumRemoteUrl");
-        if (s != null && !s.isBlank()) return s;
-        String env = System.getenv("SELENIUM_URL");
-        return (env != null && !env.isBlank()) ? env : "http://localhost:4445/wd/hub";
-    }
+    protected String seleniumRemoteUrl;
+    protected boolean headless;
 
-    protected boolean headless() {
-        String s = System.getProperty("headless");
-        if (s == null) s = System.getenv("HEADLESS");
-        return s == null || s.isBlank() || Boolean.parseBoolean(s);
+    private String readSysOrEnv(String sysKey, String envKey, String def) {
+        String s = System.getProperty(sysKey);
+        if (s != null && !s.isBlank()) return s;
+        String e = System.getenv(envKey);
+        if (e != null && !e.isBlank()) return e;
+        return def;
     }
 
     @BeforeEach
     void setUp() throws Exception {
+        // Jenkinsfile’dan gelen -DbaseUrl ve -DseleniumRemoteUrl değerlerini okur
+        baseUrl = readSysOrEnv("baseUrl", "APP_BASE_URL", "http://localhost:8082");
+        seleniumRemoteUrl = readSysOrEnv("seleniumRemoteUrl", "SELENIUM_URL", "http://localhost:4445/wd/hub");
+
+        String h = readSysOrEnv("headless", "HEADLESS", "true");
+        headless = Boolean.parseBoolean(h);
+
         ChromeOptions options = new ChromeOptions();
+        if (headless) {
+            options.addArguments("--headless=new");
+        }
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
-        options.addArguments("--disable-gpu");
-        options.addArguments("--window-size=1280,900");
-        if (headless()) options.addArguments("--headless=new");
+        options.addArguments("--window-size=1365,768");
 
-        // ✅ Mutlaka RemoteWebDriver
-        driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
-        wait = new WebDriverWait(driver, Duration.ofSeconds(12));
+        driver = new RemoteWebDriver(new URL(seleniumRemoteUrl), options);
+        wait = new WebDriverWait(driver, Duration.ofSeconds(15));
     }
 
     @AfterEach
     void tearDown() {
-        if (driver != null) driver.quit();
+        try {
+            if (driver != null) driver.quit();
+        } catch (Exception ignored) {}
     }
 }
