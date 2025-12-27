@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     triggers {
-        // GitHub webhook ile push olduğunda otomatik tetikleme (Job tarafında webhook ayarı da yapılmalı)
         githubPush()
     }
 
@@ -12,32 +11,46 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
-    // ÖNEMLİ: Bu isim, Manage Jenkins -> Tools -> Git installations'da verdiğin isimle birebir aynı olmalı
+    // Manage Jenkins -> Tools -> Git installations içindeki isimle aynı olmalı
     tools {
         git 'git-2.48'
-
     }
 
     environment {
-        DOCKER_IMAGE      = "teknik-servis-image"
-        DOCKER_CONTAINER  = "teknik-servis-final-container"
-        DOCKER_NETWORK    = "teknik-servis-final-net"
-        SELENIUM_CONTAINER= "selenium-chrome-final"
-        SELENIUM_PORT     = "4444"
-        APP_PORT          = "8082"
-        BASE_URL          = "http://localhost:8082"
-        SELENIUM_HEADLESS = "true"
+        REPO_URL          = 'https://github.com/muhammetemirdogan/teknik-servis-ydg-final.git'
+        BRANCH            = '*/main'
+        APP_DIR           = 'teknik-servis-ydg'
+
+        DOCKER_IMAGE      = 'teknik-servis-image'
+        DOCKER_CONTAINER  = 'teknik-servis-final-container'
+        DOCKER_NETWORK    = 'teknik-servis-final-net'
+
+        // App container içinde 8081 dinliyor, hostta 8082’ye mapliyoruz
+        APP_PORT_HOST     = '8082'
+        APP_PORT_IN_CONT  = '8081'
+        BASE_URL_HOST     = 'http://localhost:8082'
+        BASE_URL_DOCKER   = 'http://teknik-servis-final-container:8081'
+
+        SELENIUM_CONTAINER= 'selenium-chrome-final'
+        SELENIUM_PORT     = '4445'
+        SELENIUM_URL      = 'http://localhost:4445/wd/hub'
+        SELENIUM_HEADLESS = 'true'
+
+        GIT_CRED_ID       = 'github-ydg-token'
     }
 
     stages {
 
-        stage('0- Debug Git (Jenkins sees)') {
+        stage('0- Debug Tools') {
             steps {
                 bat '''
-                echo ==== GIT DEBUG ====
+                echo ==== DEBUG TOOLS ====
                 where git
                 git --version
-                echo ===================
+                where java
+                java -version
+                docker --version
+                echo =====================
                 '''
             }
         }
@@ -46,118 +59,136 @@ pipeline {
             steps {
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: '*/main']],
+                    branches: [[name: "${BRANCH}"]],
                     userRemoteConfigs: [[
-                        url: 'https://github.com/muhammetemirdogan/teknik-servis-ydg.git',
-                        credentialsId: 'github-ydg-token'
+                        url: "${REPO_URL}",
+                        credentialsId: "${GIT_CRED_ID}"
                     ]],
-                    // Jenkins'in changelog hesaplamak için whatchanged koşturmasını azaltmak için:
-                    // (tam garanti değil ama faydalı)
                     doGenerateSubmoduleConfigurations: false,
                     extensions: [
                         [$class: 'CleanBeforeCheckout']
                     ]
                 ])
-            }
-        }
 
-        stage('2- Build') {
-            steps {
-                bat 'call mvnw -B -DskipTests clean package'
-            }
-        }
-
-        stage('3- Unit Tests') {
-            steps {
-                // surefire: **/*UnitTest.java
-                bat 'call mvnw -B -DskipUnitTests=false -Dsurefire.reportsDirectory=target/surefire-reports-unit test'
-            }
-        }
-
-
-        stage('4- Integration Tests') {
-            steps {
-                // failsafe: **/*IT.java (integration-test + verify)
-                bat 'call mvnw -B -DskipUnitTests=true -Dfailsafe.reportsDirectory=target/failsafe-reports-it verify'
-            }
-        }
-
-        stage('5- Docker Build & Run') {
-            steps {
                 bat '''
-                setlocal EnableExtensions
-
-                if not exist Dockerfile (
-                  echo Dockerfile bulunamadi
-                  dir
-                  exit /b 1
-                )
-
-                docker rm -f %DOCKER_CONTAINER% >NUL 2>NUL
-                docker rm -f %SELENIUM_CONTAINER% >NUL 2>NUL
-                docker network rm %DOCKER_NETWORK% >NUL 2>NUL
-                docker network create %DOCKER_NETWORK% >NUL
-                for /f "tokens=5" %%a in ('netstat -aon ^| findstr :%APP_PORT% ^| findstr LISTENING') do (
-                  echo Killing process on port %APP_PORT% PID=%%a
-                  taskkill /F /PID %%a >NUL 2>NUL
-                )
-
-
-                netstat -aon | findstr :%APP_PORT% | findstr LISTENING >NUL
-                if %ERRORLEVEL%==0 (
-                  echo PORT %APP_PORT% dolu
-                  netstat -aon | findstr :%APP_PORT% | findstr LISTENING
-                  exit /b 1
-                )
-
-                docker build -t %DOCKER_IMAGE% .
-
-                docker run -d --rm -p %APP_PORT%:8081 --name %DOCKER_CONTAINER% --network %DOCKER_NETWORK% %DOCKER_IMAGE%
-
-                powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                  "$ErrorActionPreference='SilentlyContinue';" ^
-                  "$urls=@('%BASE_URL%/actuator/health','%BASE_URL%/api/servis-kayitlari');" ^
-                  "for($i=1;$i -le 40;$i++){" ^
-                  "  foreach($u in $urls){" ^
-                  "    try{" ^
-                  "      $r=Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2;" ^
-                  "      if($r.StatusCode -eq 200){" ^
-                  "        Write-Host 'HEALTH OK:' $u;" ^
-                  "        exit 0" ^
-                  "      }" ^
-                  "    } catch {}" ^
-                  "  }" ^
-                  "  Start-Sleep -Seconds 2" ^
-                  "}" ^
-                  "exit 1"
-
-
-                if %ERRORLEVEL% NEQ 0 (
-                  echo Uygulama ayaga kalkmadi - healthcheck fail
-                  echo ---- docker ps ----
-                  docker ps -a
-                  echo ---- docker logs ----
-                  docker logs %DOCKER_CONTAINER%
-                  exit /b 1
-                )
-
-                echo Uygulama ayakta: %BASE_URL%
-                endlocal
-                exit /b 0
+                echo ==== WORKSPACE CONTENT ====
+                dir
+                echo ==========================
                 '''
             }
         }
 
-        stage('6- Start Selenium Container') {
+        stage('2- Build (skip tests)') {
+            steps {
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -DskipTests clean package'
+                }
+            }
+        }
+
+        stage('3- Unit Tests (*UnitTest.java)') {
+            steps {
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -DskipUnitTests=false -Dsurefire.reportsDirectory=target/surefire-reports-unit test'
+                }
+            }
+        }
+
+        stage('4- Integration Tests (*IT.java)') {
+            steps {
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -DskipUnitTests=true -Dfailsafe.reportsDirectory=target/failsafe-reports-it verify'
+                }
+            }
+        }
+
+        stage('5- Docker Build & Run App') {
+            steps {
+                dir("${APP_DIR}") {
+                    bat '''
+                    setlocal EnableExtensions
+
+                    echo ==== DOCKER PRE-CLEAN ====
+                    docker rm -f %DOCKER_CONTAINER% 1>NUL 2>NUL
+                    docker rm -f %SELENIUM_CONTAINER% 1>NUL 2>NUL
+
+                    REM Host portu %APP_PORT_HOST% publish eden baska container varsa kaldir
+                    for /f "tokens=1" %%i in ('docker ps -a --format "{{.ID}} {{.Ports}}" ^| findstr /C:":%APP_PORT_HOST%->"') do (
+                        echo Removing container using host port %APP_PORT_HOST%: %%i
+                        docker rm -f %%i 1>NUL 2>NUL
+                    )
+
+                    REM Network reset
+                    docker network rm %DOCKER_NETWORK% 1>NUL 2>NUL
+                    docker network create %DOCKER_NETWORK% 1>NUL || exit /b 1
+
+                    REM Dockerfile kontrol
+                    if not exist Dockerfile (
+                      echo Dockerfile bulunamadi! Bulundugun klasor:
+                      cd
+                      dir
+                      exit /b 1
+                    )
+
+                    echo ==== DOCKER BUILD ====
+                    docker build -t %DOCKER_IMAGE% . || exit /b 1
+
+                    echo ==== DOCKER RUN APP ====
+                    docker run -d --rm -p %APP_PORT_HOST%:%APP_PORT_IN_CONT% --name %DOCKER_CONTAINER% --network %DOCKER_NETWORK% %DOCKER_IMAGE% || exit /b 1
+
+                    echo ==== HEALTHCHECK (%BASE_URL_HOST%) ====
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                      "$ErrorActionPreference='SilentlyContinue';" ^
+                      "$urls=@('%BASE_URL_HOST%/actuator/health','%BASE_URL_HOST%/api/servis-kayitlari');" ^
+                      "for($i=1;$i -le 40;$i++){" ^
+                      "  foreach($u in $urls){" ^
+                      "    try{" ^
+                      "      $r=Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2;" ^
+                      "      if($r.StatusCode -eq 200){" ^
+                      "        Write-Host 'HEALTH OK:' $u;" ^
+                      "        exit 0" ^
+                      "      }" ^
+                      "    } catch {}" ^
+                      "  }" ^
+                      "  Start-Sleep -Seconds 2" ^
+                      "}" ^
+                      "exit 1"
+
+                    if %ERRORLEVEL% NEQ 0 (
+                      echo Uygulama ayaga kalkmadi - healthcheck fail
+                      echo ---- docker ps ----
+                      docker ps -a
+                      echo ---- docker logs (app) ----
+                      docker logs %DOCKER_CONTAINER%
+                      exit /b 1
+                    )
+
+                    echo Uygulama ayakta: %BASE_URL_HOST%
+                    endlocal
+                    exit /b 0
+                    '''
+                }
+            }
+        }
+
+        stage('6- Start Selenium Container (4445)') {
             steps {
                 bat '''
                 setlocal EnableExtensions
-                docker rm -f %SELENIUM_CONTAINER% >NUL 2>NUL
 
-                REM Selenium Standalone Chrome (RemoteWebDriver)
-                docker run -d --rm --name %SELENIUM_CONTAINER% --network %DOCKER_NETWORK% -p %SELENIUM_PORT%:4444 selenium/standalone-chrome:latest
+                echo ==== SELENIUM PRE-CLEAN ====
+                docker rm -f %SELENIUM_CONTAINER% 1>NUL 2>NUL
 
-                REM Selenium ayağa kalkana kadar bekle
+                REM Host portu %SELENIUM_PORT% publish eden baska container varsa kaldir
+                for /f "tokens=1" %%i in ('docker ps -a --format "{{.ID}} {{.Ports}}" ^| findstr /C:":%SELENIUM_PORT%->"') do (
+                    echo Removing container using host port %SELENIUM_PORT%: %%i
+                    docker rm -f %%i 1>NUL 2>NUL
+                )
+
+                echo ==== RUN SELENIUM ====
+                docker run -d --rm --name %SELENIUM_CONTAINER% --network %DOCKER_NETWORK% -p %SELENIUM_PORT%:4444 --shm-size=2g selenium/standalone-chrome:latest || exit /b 1
+
+                echo ==== WAIT SELENIUM STATUS ====
                 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
                   "$ErrorActionPreference='SilentlyContinue';" ^
                   "for($i=1;$i -le 30;$i++){" ^
@@ -169,6 +200,7 @@ pipeline {
 
                 if %ERRORLEVEL% NEQ 0 (
                   echo Selenium ayaga kalkmadi
+                  docker ps -a
                   docker logs %SELENIUM_CONTAINER%
                   exit /b 1
                 )
@@ -181,89 +213,111 @@ pipeline {
 
         stage('6.1- Selenium Senaryo 1') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo1SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s1 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo1SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s1 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.2- Selenium Senaryo 2') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo2SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s2 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo2SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s2 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.3- Selenium Senaryo 3') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo3SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s3 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo3SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s3 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
+        // İstersen 4-10’u da aç (puan için). Hepsi geçerse ekstra puan:
         stage('6.4- Selenium Senaryo 4') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo4SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s4 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo4SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s4 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.5- Selenium Senaryo 5') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo5SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s5 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo5SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s5 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.6- Selenium Senaryo 6') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo6SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s6 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo6SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s6 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.7- Selenium Senaryo 7') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo7SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s7 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo7SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s7 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.8- Selenium Senaryo 8') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo8SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s8 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo8SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s8 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.9- Selenium Senaryo 9') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo9SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s9 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo9SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s9 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
 
         stage('6.10- Selenium Senaryo 10') {
             steps {
-                bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo10SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s10 -DbaseUrl=http://%DOCKER_CONTAINER%:8081 -DseleniumRemoteUrl=http://localhost:%SELENIUM_PORT%/wd/hub -Dheadless=%SELENIUM_HEADLESS% test'
+                dir("${APP_DIR}") {
+                    bat 'call mvnw -B -Dtest=com.example.teknikservis.selenium.Senaryo10SeleniumTest -Dsurefire.reportsDirectory=target/surefire-reports-e2e-s10 -DbaseUrl=%BASE_URL_DOCKER% -DseleniumRemoteUrl=%SELENIUM_URL% -Dheadless=%SELENIUM_HEADLESS% test'
+                }
             }
         }
     }
 
     post {
         always {
-            junit testResults: 'target/surefire-reports-*/TEST-*.xml,target/failsafe-reports*/TEST-*.xml,target/failsafe-reports*/*.xml',
+            junit testResults: 'teknik-servis-ydg/target/surefire-reports-*/TEST-*.xml,teknik-servis-ydg/target/failsafe-reports*/TEST-*.xml,teknik-servis-ydg/target/failsafe-reports*/*.xml',
                   allowEmptyResults: true
 
-            archiveArtifacts artifacts: 'target/surefire-reports-*/**/*.xml,target/failsafe-reports*/**/*.xml',
+            archiveArtifacts artifacts: 'teknik-servis-ydg/target/surefire-reports-*/**/*.xml,teknik-servis-ydg/target/failsafe-reports*/**/*.xml',
                              allowEmptyArchive: true
         }
 
         failure {
-            // Bu blok build'i tekrar fail etmesin
             bat '''
             echo ---- FAIL DEBUG: docker ps ----
             docker ps -a
-            echo ---- FAIL DEBUG: docker logs ----
-            docker logs %DOCKER_CONTAINER% 2>NUL || echo No container logs
+            echo ---- FAIL DEBUG: docker logs (app) ----
+            docker logs %DOCKER_CONTAINER% 2>NUL || echo No app container logs
+            echo ---- FAIL DEBUG: docker logs (selenium) ----
+            docker logs %SELENIUM_CONTAINER% 2>NUL || echo No selenium container logs
             exit /b 0
             '''
         }
 
         cleanup {
-            bat 'docker rm -f %SELENIUM_CONTAINER% >NUL 2>NUL || exit /b 0'
-            bat 'docker rm -f %DOCKER_CONTAINER% >NUL 2>NUL || exit /b 0'
-            bat 'docker network rm %DOCKER_NETWORK% >NUL 2>NUL || exit /b 0'
+            bat 'docker rm -f %SELENIUM_CONTAINER% 1>NUL 2>NUL || exit /b 0'
+            bat 'docker rm -f %DOCKER_CONTAINER% 1>NUL 2>NUL || exit /b 0'
+            bat 'docker network rm %DOCKER_NETWORK% 1>NUL 2>NUL || exit /b 0'
         }
     }
 }

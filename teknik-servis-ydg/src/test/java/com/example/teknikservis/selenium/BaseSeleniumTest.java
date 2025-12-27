@@ -1,87 +1,56 @@
 package com.example.teknikservis.selenium;
 
-import io.github.bonigarcia.wdm.WebDriverManager;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
-import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.Duration;
 
 public abstract class BaseSeleniumTest {
 
-    protected static WebDriver driver;
-    protected static String baseUrl;
-    protected static String seleniumRemoteUrl;
+    protected WebDriver driver;
+    protected WebDriverWait wait;
 
-    @BeforeAll
-    static void setupDriver() {
-        // baseUrl: önce -DbaseUrl, yoksa env BASE_URL, yoksa default
-        if (baseUrl == null || baseUrl.isBlank()) {
-            baseUrl = System.getProperty("baseUrl");
-            if (baseUrl == null || baseUrl.isBlank()) {
-                baseUrl = System.getenv("BASE_URL");
-            }
-            if (baseUrl == null || baseUrl.isBlank()) {
-                baseUrl = "http://localhost:8081";
-            }
-        }
-
-        // headless: önce -Dheadless, yoksa env SELENIUM_HEADLESS, yoksa true
-        String headlessStr = System.getProperty("headless");
-        if (headlessStr == null || headlessStr.isBlank()) {
-            headlessStr = System.getenv("SELENIUM_HEADLESS");
-        }
-        boolean headless = (headlessStr == null || headlessStr.isBlank())
-                ? true
-                : Boolean.parseBoolean(headlessStr);
-
-        // Remote Selenium URL: önce -DseleniumRemoteUrl, yoksa env SELENIUM_URL, yoksa null
-        if (seleniumRemoteUrl == null || seleniumRemoteUrl.isBlank()) {
-            seleniumRemoteUrl = System.getProperty("seleniumRemoteUrl");
-            if (seleniumRemoteUrl == null || seleniumRemoteUrl.isBlank()) {
-                seleniumRemoteUrl = System.getenv("SELENIUM_URL");
-            }
-        }
-
-        // Driver'ı sadece 1 kere oluştur (tüm senaryolar aynı JVM'de koşar)
-        if (driver == null) {
-            ChromeOptions options = new ChromeOptions();
-
-            // Jenkins/CI için stabil argümanlar
-            if (headless) options.addArguments("--headless=new");
-            options.addArguments("--window-size=1920,1080");
-            options.addArguments("--disable-gpu");
-            options.addArguments("--no-sandbox");
-            options.addArguments("--disable-dev-shm-usage");
-            options.addArguments("--remote-allow-origins=*");
-
-            // 1) Remote Selenium varsa RemoteWebDriver ile çalış
-            if (seleniumRemoteUrl != null && !seleniumRemoteUrl.isBlank()) {
-                try {
-                    driver = new RemoteWebDriver(new URL(seleniumRemoteUrl), options);
-                    return;
-                } catch (MalformedURLException e) {
-                    throw new IllegalArgumentException("Geçersiz seleniumRemoteUrl: " + seleniumRemoteUrl, e);
-                }
-            }
-
-            // 2) Aksi halde local ChromeDriver
-            WebDriverManager.chromedriver().setup();
-            driver = new ChromeDriver(options);
-        }
+    protected String baseUrl() {
+        String s = System.getProperty("baseUrl");
+        if (s != null && !s.isBlank()) return s;
+        String env = System.getenv("APP_BASE_URL");
+        return (env != null && !env.isBlank()) ? env : "http://localhost:8082";
     }
 
-    @AfterAll
-    static void tearDown() {
-        try {
-            if (driver != null) driver.quit();
-        } catch (Exception ignored) {
-        } finally {
-            driver = null;
-        }
+    protected String seleniumUrl() {
+        String s = System.getProperty("seleniumRemoteUrl");
+        if (s != null && !s.isBlank()) return s;
+        String env = System.getenv("SELENIUM_URL");
+        return (env != null && !env.isBlank()) ? env : "http://localhost:4445/wd/hub";
+    }
+
+    protected boolean headless() {
+        String s = System.getProperty("headless");
+        if (s == null) s = System.getenv("HEADLESS");
+        return s == null || s.isBlank() || Boolean.parseBoolean(s);
+    }
+
+    @BeforeEach
+    void setUp() throws Exception {
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--disable-gpu");
+        options.addArguments("--window-size=1280,900");
+        if (headless()) options.addArguments("--headless=new");
+
+        // ✅ Mutlaka RemoteWebDriver
+        driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
+        wait = new WebDriverWait(driver, Duration.ofSeconds(12));
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (driver != null) driver.quit();
     }
 }
