@@ -13,7 +13,6 @@ public class Senaryo5SeleniumTest extends BaseSeleniumTest {
         driver.get(baseUrl + "/api/servis-kayitlari");
 
         String pageSource = driver.getPageSource();
-
         assertTrue(
                 pageSource.contains("\"cihaz\""),
                 "JSON icinde 'cihaz' alan adi bulunamadi!"

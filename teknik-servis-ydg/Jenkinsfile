@@ -125,7 +125,7 @@ pipeline {
                     """
                 }
 
-                // ✅ BAT içine gömmüyoruz, doğrudan powershell step:
+
                 powershell """
                   \$ErrorActionPreference = 'SilentlyContinue'
                   \$urls = @(

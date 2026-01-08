@@ -118,7 +118,6 @@ class ServisKaydiServiceImplUnitTest {
         assertEquals(now, kayit.getAcilisTarihi());
         assertEquals(cihaz, kayit.getCihaz());
 
-        // Save'e giden objeyi yakala
         ArgumentCaptor<ServisKaydi> captor = ArgumentCaptor.forClass(ServisKaydi.class);
         verify(servisKaydiRepository).save(captor.capture());
         assertEquals(ServisKaydi.Durum.ACIK, captor.getValue().getDurum());

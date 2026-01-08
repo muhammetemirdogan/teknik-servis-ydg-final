@@ -14,8 +14,6 @@ public abstract class BaseSeleniumTest {
 
     protected WebDriver driver;
     protected WebDriverWait wait;
-
-    // 🔥 Senaryoların kullandığı field (compile hatasını çözen şey bu)
     protected String baseUrl;
 
     protected String seleniumRemoteUrl;
@@ -31,9 +29,9 @@ public abstract class BaseSeleniumTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // Jenkinsfile’dan gelen -DbaseUrl ve -DseleniumRemoteUrl değerlerini okur
-        baseUrl = readSysOrEnv("baseUrl", "APP_BASE_URL", "http://localhost:8082");
-        seleniumRemoteUrl = readSysOrEnv("seleniumRemoteUrl", "SELENIUM_URL", "http://localhost:4445/wd/hub");
+        baseUrl = readSysOrEnv("baseUrl", "APP_BASE_URL", "http://host.docker.internal:8082");
+
+        seleniumRemoteUrl = readSysOrEnv("seleniumRemoteUrl", "SELENIUM_URL", "http://localhost:4444/wd/hub");
 
         String h = readSysOrEnv("headless", "HEADLESS", "true");
         headless = Boolean.parseBoolean(h);

@@ -39,7 +39,6 @@ class ServisKaydiIntegrationIT {
     void yeniServisKaydiOlusturupMusteriyeGoreListeleyebilmeliyiz() {
         String uniq = UUID.randomUUID().toString().substring(0, 8);
 
-        // 1) Test musterisi olustur
         Kullanici musteri = new Kullanici();
         musteri.setAd("Integration Musteri");
         musteri.setEmail("integration.musteri." + uniq + "@test.com");
@@ -47,7 +46,6 @@ class ServisKaydiIntegrationIT {
         musteri.setRol(Kullanici.Rol.MUSTERI);
         musteri = kullaniciRepository.save(musteri);
 
-        // 2) Teknisyen olustur (opsiyonel ama saglam)
         Kullanici teknisyen = new Kullanici();
         teknisyen.setAd("Integration Teknisyen");
         teknisyen.setEmail("integration.teknisyen." + uniq + "@test.com");
@@ -55,7 +53,6 @@ class ServisKaydiIntegrationIT {
         teknisyen.setRol(Kullanici.Rol.TEKNISYEN);
         teknisyen = kullaniciRepository.save(teknisyen);
 
-        // 3) Musteriye ait cihaz olustur
         Cihaz cihaz = new Cihaz();
         cihaz.setMusteri(musteri);
         cihaz.setMarka("IntegrationTest Marka");
@@ -63,7 +60,6 @@ class ServisKaydiIntegrationIT {
         cihaz.setSeriNo("INT-" + uniq);
         cihaz = cihazRepository.save(cihaz);
 
-        // 4) Servis kaydi olustur
         ServisKaydi kayit = servisKaydiService.createServisKaydi(
                 musteri.getId(),
                 cihaz.getId(),
@@ -74,7 +70,6 @@ class ServisKaydiIntegrationIT {
 
         assertNotNull(kayit.getId(), "Servis kaydi kaydedilmeli ve ID donmeli");
 
-        // 5) Musterinin kayitlarini listele
         List<ServisKaydi> musteriKayitlari =
                 servisKaydiService.getServisKayitlariForMusteri(musteri.getId());
 

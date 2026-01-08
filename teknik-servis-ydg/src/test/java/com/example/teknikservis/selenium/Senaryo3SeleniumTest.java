@@ -5,13 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Senaryo 3:
- *   H2 veritabanı konsoluna ulasilabiliyor mu kontrol eder.
- *
- * Beklenen: /h2-console sayfasinda "H2 Console" veya
- * "Login" gibi bir metin bulunmali.
- */
 public class Senaryo3SeleniumTest extends BaseSeleniumTest {
 
     @Test

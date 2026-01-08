@@ -42,7 +42,7 @@ class ServisKaydiServiceIT {
     void servis_kaydi_olusturulup_dbde_bulunmali() {
         String uniq = UUID.randomUUID().toString().substring(0, 8);
 
-        // 1) Test musterisi olustur
+
         Kullanici musteri = new Kullanici();
         musteri.setAd("IT Musteri");
         musteri.setEmail("it.musteri." + uniq + "@test.com");
@@ -50,7 +50,6 @@ class ServisKaydiServiceIT {
         musteri.setRol(Kullanici.Rol.MUSTERI);
         musteri = kullaniciRepository.save(musteri);
 
-        // 2) Musteriye bagli cihaz olustur
         Cihaz cihaz = new Cihaz();
         cihaz.setMusteri(musteri);
         cihaz.setMarka("IT-MARKA");
@@ -58,7 +57,6 @@ class ServisKaydiServiceIT {
         cihaz.setSeriNo("IT-SERI-" + uniq);
         cihaz = cihazRepository.save(cihaz);
 
-        // 3) Servis kaydi olustur (service uzerinden)
         ServisKaydi kayit = servisKaydiService.createServisKaydi(
                 musteri.getId(),
                 cihaz.getId(),
@@ -69,7 +67,6 @@ class ServisKaydiServiceIT {
 
         assertNotNull(kayit.getId(), "Olusan kaydin ID'si dolu olmali");
 
-        // 4) Kaydi DB'den tekrar oku ve kontrol et
         ServisKaydi dbKayit = servisKaydiRepository.findById(kayit.getId())
                 .orElseThrow(() -> new IllegalStateException("Kayit DB'de bulunamadi"));
 

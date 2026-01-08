@@ -14,7 +14,6 @@ public class Senaryo6SeleniumTest extends BaseSeleniumTest {
 
         String pageSource = driver.getPageSource();
 
-        // Beklenti: JSON bir liste ve icinde en az bir obje var
         boolean notEmptyList =
                 pageSource.contains("[") &&
                         pageSource.contains("]") &&

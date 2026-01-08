@@ -14,12 +14,10 @@ public class Senaryo4SeleniumTest extends BaseSeleniumTest {
 
         String pageSource = driver.getPageSource();
 
-        // En azindan aciklama ve durum alan adlari bulunmali
         assertTrue(
                 pageSource.contains("\"aciklama\""),
                 "JSON icinde 'aciklama' alan adi bulunamadi!"
         );
-
         assertTrue(
                 pageSource.contains("\"durum\""),
                 "JSON icinde 'durum' alan adi bulunamadi!"

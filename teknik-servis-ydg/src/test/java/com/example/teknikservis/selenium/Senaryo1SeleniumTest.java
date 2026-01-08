@@ -5,14 +5,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Senaryo 1:
- *   /api/servis-kayitlarii endpoint'i calisiyor mu ve
- *   ornek servis kayitlarini donuyor mu kontrol eder.
- *
- * Beklenen: data.sql icindeki "Ekran kirik" aciklamasi
- * JSON icinde gorunmeli.
- */
 public class Senaryo1SeleniumTest extends BaseSeleniumTest {
 
     @Test
